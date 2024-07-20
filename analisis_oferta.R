@@ -36,6 +36,32 @@ programas_data_diseño <- programas_data %>%
          departamento_oferta_programa == "Antioquia",
          grepl("Diseño", nombre_del_programa, ignore.case = TRUE))
 
+# N-distinct
+
+# Cargar el paquete dplyr
+library(dplyr)
+
+distinct_counts_grouped <- programas_data_diseño %>%
+  group_by(cine_f_2013_ac_campo_amplio, area_de_conocimiento, nucleo_basico_del_conocimiento) %>%
+  reframe(sum= n())
+  reframe(
+    distinct_campo_especifico = n_distinct(cine_f_2013_ac_campo_especific),
+    distinct_campo_detallado = n_distinct(cine_f_2013_ac_campo_detallado),
+    distinct_area_conocimiento = n_distinct(area_de_conocimiento),
+    distinct_nucleo_basico_conocimiento = n_distinct(nucleo_basico_del_conocimiento)
+  )
+
+# Mostrar el resultado
+print(distinct_counts_grouped)
+
+# Mostrar el resultado
+print(distinct_counts)
+
+
+# Mostrar el resultado
+print(distinct_counts)
+
+
 programas_y_matriculas_seleccion <- programas_y_matriculas_SNIES %>%
   select(nombre_institucion, sector, codigo_snies_del_programa, nombre_del_programa, 
          cine_f_2013_ac_campo_amplio, cine_f_2013_ac_campo_especific, 
@@ -985,3 +1011,4 @@ ggplot(coeficientes_significativos, aes(x = reorder(term, ponderado), y = ponder
        x = "Factores",
        y = "Impacto Ponderado (sobre 25%)") +
   theme_minimal()
+

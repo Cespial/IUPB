@@ -207,6 +207,12 @@ if(nrow(graduados_snies) > 0) {
 
 # Graduados SNIES --------------------
 
+library(readxl)
+library(dplyr)
+library(janitor)
+library(openxlsx)
+library(glue)
+
 # Definir la función para leer y limpiar la base de datos
 lectura_base <- function(path_a) { 
   print(glue("Leyendo el archivo: {path_a}"))
