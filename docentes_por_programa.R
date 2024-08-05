@@ -22,6 +22,5 @@ ruta_salida <- paste0(ruta_base, "SALIDA_CONSOLIDADA/consolidada_docentes_por_pr
 write_excel_csv(consolidada_docentes, file = ruta_salida, col_names = TRUE)
 save(consolidada_docentes, file = "/Users/cristianespinal/Library/CloudStorage/GoogleDrive-cristian.espinal@pascualbravo.edu.co/Unidades compartidas/UVIC - Unidad de Vigilancia Tecnologica e Inteligencia Competitiva/6. Lago de datos/RAW DATA/Docentes por programa//SALIDA_CONSOLIDADA/consolidada_docentes_por_programa.rdata")
 
-
 # Confirmar la finalización del proceso
 print("Proceso completado. La base de datos consolidada se ha exportado correctamente.")

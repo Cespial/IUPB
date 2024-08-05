@@ -485,9 +485,140 @@ brechas_precio_costo <- brechas_precio_costo %>%
 # Mostrar el dataframe final
 print(brechas_precio_costo)
 
+# Cargar las librerías necesarias
+library(dplyr)
 
+# Renombrar las columnas para hacer la unión más fácil
+final_ingresos_data <- final_ingresos_data %>%
+  rename(NOMBRE_OBJETO = Programa, PERIODO = Periodo)
 
+final_estudiantes_data <- final_estudiantes_data %>%
+  rename(NOMBRE_OBJETO = Programa, PERIODO = Periodo)
 
+# Unir las bases de datos
+brechas_precio_costo <- final_ingresos_data %>%
+  left_join(final_estudiantes_data, by = c("NOMBRE_OBJETO" = "NOMBRE_OBJETO", "PERIODO" = "PERIODO", "Año" = "año")) %>%
+  left_join(final_data, by = c("NOMBRE_OBJETO" = "NOMBRE OBJETO", "PERIODO" = "PERIODO", "Año" = "año"))
+
+# Seleccionar y reordenar las columnas deseadas
+brechas_precio_costo <- brechas_precio_costo %>%
+  select(NOMBRE_OBJETO, PERIODO, Matrícula, Dctos, Neto, `No. de Estudiantes`, final_estudiantes_data$`Total No. de Estudiantes (Anual)`, `COSTO PROMEDIO POR ESTUDIANTE`)
+
+# Mostrar el dataframe final
+print(brechas_precio_costo)
+
+# Resta
+
+# Verificar valores faltantes en las columnas relevantes y eliminarlos si es necesario
+brechas_precio_costo <- brechas_precio_costo %>%
+  filter(!is.na(`No. de Estudiantes`) & !is.na(`COSTO PROMEDIO POR ESTUDIANTE`) & !is.na(Neto))
+
+# Calcular la variable precio_por_estudiante
+brechas_precio_costo <- brechas_precio_costo %>%
+  mutate(precio_por_estudiante = Neto / `No. de Estudiantes`)
+
+# Calcular la variable brecha
+brechas_precio_costo <- brechas_precio_costo %>%
+  mutate(brecha = precio_por_estudiante - `COSTO PROMEDIO POR ESTUDIANTE`)
+
+# Mostrar la base de datos final con las nuevas variables
+print(brechas_precio_costo)
+
+# Calcular las variables precio_por_estudiante, brecha, dctos_por_estudiante y razon_dctos_por_estudiante
+brechas_precio_costo <- brechas_precio_costo %>%
+  mutate(precio_por_estudiante = Neto / `No. de Estudiantes`,
+         brecha = precio_por_estudiante - `COSTO PROMEDIO POR ESTUDIANTE`,
+         dctos_por_estudiante = Dctos / `No. de Estudiantes`,
+         razon_dctos_por_estudiante = dctos_por_estudiante / precio_por_estudiante)
+
+# Mostrar la base de datos final con las nuevas variables
+print(brechas_precio_costo)
+
+# Niveles
+
+library(readxl)
+
+# Define la ruta del archivo
+niveles_path <- "/Users/cristianespinal/Downloads/nivel_programas.xlsx"
+
+# Lee el archivo de Excel
+niveles_data <- read_excel(niveles_path)
+
+# Renombrar la columna para hacer la unión más fácil
+niveles_data <- niveles_data %>%
+  rename(NOMBRE_OBJETO = NOMBRE_OBJETO)
+
+guardar_datos(brechas_precio_costo, path_base, "brechas_precio_costo")
+
+# Unir la base de datos brechas_precio_costo con niveles_data para obtener los niveles correctos
+brechas_precio_costo <- brechas_precio_costo %>%
+  left_join(niveles_data, by = "NOMBRE_OBJETO")
+
+# Mostrar la base de datos final con la nueva variable nivel
+print(brechas_precio_costo)
+
+# brechas_subset_general
+
+# Cargar las librerías necesarias
+library(dplyr)
+
+# Crear el subset brecha_subset_general
+brecha_subset_general <- brechas_precio_costo %>%
+  group_by(PERIODO) %>%
+  summarise(across(c(Matrícula, Dctos, Neto, `No. de Estudiantes`, 
+                     `COSTO PROMEDIO POR ESTUDIANTE`, precio_por_estudiante, brecha), 
+                   mean, na.rm = TRUE))
+
+# Mostrar el subset general con los promedios por periodo
+print(brecha_subset_general)
+
+guardar_datos(brecha_subset_general, path_base, "brecha_subset_general")
+
+# Crear el subset brecha_subset_niveles con los promedios por periodo y nivel
+brecha_subset_niveles <- brechas_precio_costo %>%
+  group_by(PERIODO, nivel) %>%
+  summarise(across(c(Matrícula, Dctos, Neto, `No. de Estudiantes`, 
+                     `COSTO PROMEDIO POR ESTUDIANTE`, precio_por_estudiante, brecha, dctos_por_estudiante, razon_dctos_por_estudiante), 
+                   ~mean(.)))
+
+# Mostrar el subset por niveles con los promedios por periodo y nivel
+print(brecha_subset_niveles)
+
+guardar_datos(brecha_subset_niveles, path_base, "brecha_subset_niveles")
+
+# Tasa de crecimiento
+
+library(dplyr)
+
+# Crear el subset brechas_tasas
+brechas_tasas <- brechas_precio_costo %>%
+  group_by(NOMBRE_OBJETO) %>%
+  arrange(PERIODO) %>%
+  mutate(
+    tasa_crecimiento_brecha = (brecha - lag(brecha)) / lag(brecha) * 100
+  ) %>%
+  filter(!is.na(tasa_crecimiento_brecha))
+
+library(dplyr)
+library(zoo)
+
+brechas_tasas <- brechas_precio_costo %>%
+  group_by(NOMBRE_OBJETO) %>%
+  arrange(PERIODO) %>%
+  mutate(
+    # Calcular el promedio móvil de las brechas de los últimos dos periodos
+    promedio_2 = rollapply(brecha, width = 2, FUN = mean, align = "right", fill = NA, na.rm = TRUE),
+    # Calcular el promedio móvil de las brechas de los últimos cuatro periodos
+    promedio_4 = rollapply(brecha, width = 4, FUN = mean, align = "right", fill = NA, na.rm = TRUE),
+    # Calcular la tasa de crecimiento normalizada
+    tasa_normalizada = (promedio_2 - promedio_4) / (promedio_2 + promedio_4)
+  ) %>%
+  filter(!is.na(tasa_normalizada))
+
+# Mostrar el resultado
+print(brechas_tasas)
+
+guardar_datos(brechas_tasas, path_base, "brechas_tasas")
 
 
 
