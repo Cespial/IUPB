@@ -12,6 +12,8 @@ library(purrr)
 library(tidyr)
 library(openxlsx)
 library(stringi)
+library(lubridate)
+
 file_path <- "../DATA CONSOLIDADA/encuesta_investigacion_uvic_tabulada.xlsx"
 encuesta_talento <- read_excel(file_path)
 head(encuesta_talento)
@@ -57,6 +59,17 @@ encuesta_talento <- encuesta_talento %>%
           "Elija la disciplina en la que se enfoca su actividad investigativa [No aplica]"), 
         sep = "; ", na.rm = TRUE)
 
+# Renombrar las variables según lo especificado
+encuesta_talento <- encuesta_talento %>%
+  rename(
+    Cédula = `Cédula  (no incluir puntos ni comas, solo números ej: 1281052350)`,
+    Departamento = `Elija el departamento al cual pertenece`,
+    Programa_Academico = `Elija el programa académico institucional al cual aporta`,
+    Grupo_Investigacion = `Elija el grupo de investigación al cual pertenece. De lo contrario, marque la opción no aplica.`,
+    Enfoque_Investigativo = `Escriba el nombre específico de su enfoque investigativo (por ejemplo: Síntesis de materiales, modelamiento de procesos, modelado computacional, sistemas de potencia, etc)`,
+    Nucleo_Basico_Conocimiento = `Elija el núcleo básico de conocimiento en el cuál se enfoca su quehacer investigativo`
+  )
+
 # Separa las filas
 encuesta_talento <- encuesta_talento %>%
   separate_rows(Lineas_de_Investigacion, sep = "; ")
@@ -97,21 +110,10 @@ head(disciplinas_conteo)
 head(enfoque_conteo)
 head(nucleo_conteo)
 
-# Renombrar las variables según lo especificado
-encuesta_talento <- encuesta_talento %>%
-  rename(
-    Cédula = `Cédula  (no incluir puntos ni comas, solo números ej: 1281052350)`,
-    Departamento = `Elija el departamento al cual pertenece`,
-    Programa_Academico = `Elija el programa académico institucional al cual aporta`,
-    Grupo_Investigacion = `Elija el grupo de investigación al cual pertenece. De lo contrario, marque la opción no aplica.`,
-    Enfoque_Investigativo = `Escriba el nombre específico de su enfoque investigativo (por ejemplo: Síntesis de materiales, modelamiento de procesos, modelado computacional, sistemas de potencia, etc)`,
-    Nucleo_Basico_Conocimiento = `Elija el núcleo básico de conocimiento en el cuál se enfoca su quehacer investigativo`
-  )
-
 # 2. WEB-SCRAPPING PROCESAMIENTO -----------
 
 file_scrapping <- "../DATA CONSOLIDADA/Minciencias_Por_Autor_Pascual.xlsx"
-produccion_productividad <- read_excel(file_scrapping)
+web_scrapping_investigacion <- read_excel(file_scrapping)
 names(produccion_productividad)
 
 # 3. AGRUPACIÓN INDEX
@@ -126,6 +128,24 @@ produccion_productividad$Identificación <- as.numeric(produccion_productividad$
 
 # Unir ambas bases de datos por la variable Identificación
 index_talento_produccion <- left_join(encuesta_talento, produccion_productividad, by = "Identificación")
+
+### DISTINC
+
+# Contar el número de filas antes de eliminar duplicados
+num_filas_antes <- nrow(index_talento_produccion)
+
+# Eliminar duplicados
+index_talento_produccion_distinct <- index_talento_produccion %>%
+  distinct(Identificación, Grupo_Investigacion, Categoria, Tipologia, Titulo, .keep_all = TRUE)
+
+# Contar el número de filas después de eliminar duplicados
+num_filas_despues <- nrow(index_talento_produccion_distinct)
+
+# Calcular el número de filas eliminadas
+filas_eliminadas <- num_filas_antes - num_filas_despues
+
+# Mostrar el número de filas eliminadas
+cat("Número de filas eliminadas: ", filas_eliminadas, "\n")
 
 # 2.1. SUBSET POR LINEAS -----------
 
@@ -212,11 +232,38 @@ index_talento <- index_talento_produccion %>%
   distinct()
 
 # Procesar conteo para cada grupo
+
+index_grupo <- procesar_conteo(web_scrapping_investigacion, `Nombre del grupo`)
+library(dplyr)
+
+index_grupo <- index_grupo %>%
+  mutate(
+    `Nombre del grupo` = case_when(
+      `Nombre del grupo` == "GRUPO DE INVESTIGACION E INNOVACION EN ENERGIA - GIIEN" ~ "GIIEN",
+      `Nombre del grupo` == "GRUPO DE INVESTIGACION EN CIENCIAS ELECTRONICAS E INFORMATICAS - GICEI" ~ "GICEI",
+      `Nombre del grupo` == "INVESTIGACION E INNOVACION AMBIENTAL. GIIAM" ~ "GIIAM",
+      `Nombre del grupo` == "QUALIPRO- GRUPO DE INVESTIGACION EN CALIDAD Y PRODUCTIVIDAD" ~ "QUALIPRO",
+      TRUE ~ `Nombre del grupo`
+    )
+  )
+
+web_scrapping_investigacion <- web_scrapping_investigacion %>%
+  mutate(
+    `Nombre del grupo` = case_when(
+      `Nombre del grupo` == "GRUPO DE INVESTIGACION E INNOVACION EN ENERGIA - GIIEN" ~ "GIIEN",
+      `Nombre del grupo` == "GRUPO DE INVESTIGACION EN CIENCIAS ELECTRONICAS E INFORMATICAS - GICEI" ~ "GICEI",
+      `Nombre del grupo` == "INVESTIGACION E INNOVACION AMBIENTAL. GIIAM" ~ "GIIAM",
+      `Nombre del grupo` == "QUALIPRO- GRUPO DE INVESTIGACION EN CALIDAD Y PRODUCTIVIDAD" ~ "QUALIPRO",
+      TRUE ~ `Nombre del grupo`
+    )
+  )
+
+# Producción por grupo de investigación
+
 index_lineas <- procesar_conteo(index_talento, Lineas_de_Investigacion)
 index_enfoques <- procesar_conteo(index_talento, Enfoque_Investigativo)
 index_nucleos <- procesar_conteo(index_talento, Nucleo_Basico_Conocimiento)
 index_disciplinas <- procesar_conteo(index_talento, Disciplinas)
-index_grupo <- procesar_conteo(index_talento, Grupo_Investigacion)
 index_categoria <- procesar_conteo(index_talento, Categoria)
 index_tipologia <- procesar_conteo(index_talento, Tipologia)
 
@@ -248,7 +295,7 @@ procesar_tipologia <- function(data) {
 resultados_tipologia <- list()
 
 # Definir la ruta base para guardar los archivos
-base_path <- "/Users/cristianespinal/Library/CloudStorage/GoogleDrive-cristian.espinal@pascualbravo.edu.co/Unidades compartidas/UVIC - Unidad de Vigilancia Tecnologica e Inteligencia Competitiva/6. Lago de datos/DATA CONSOLIDADA"
+base_path <- "../DATA CONSOLIDADA"
 
 # Procesar datos por cada categoría y tipología
 for (categoria in categorias) {
@@ -281,13 +328,706 @@ for (categoria in categorias) {
 # Guardar los resultados en un archivo .RData
 save(resultados_tipologia, file = paste0(base_path, "/resultados_tipologia.RData"))
 
+# NUEVA VERSIÓN. AJUSTES: ampliación de la base de datos de talento humano y nuevas gráficas. ----
+
+# 3.1 AGRUPACIÓN INTEGRANTES POR GRUPOS ----
+
+ruta <- "../RAW DATA/integrantes_grupos/"
+archivos <- list.files(path = ruta, pattern = "^[^~].*\\.xlsx$", full.names = TRUE)
+
+# Función para leer un archivo Excel y agregar la columna Grupo
+leer_y_agregar_grupo <- function(archivo) {
+  nombre_archivo <- str_remove(basename(archivo), "\\.xlsx$")
+  datos <- read_excel(archivo)
+  datos <- datos %>%
+    mutate(Grupo = nombre_archivo)
+  return(datos)
+}
+
+# Leer y combinar todos los archivos en un solo dataframe
+investigadores_por_grupos <- archivos %>%
+  lapply(leer_y_agregar_grupo) %>%
+  bind_rows()
+
+# Ver los valores únicos de la variable Grupo
+unique(investigadores_por_grupos$Grupo)
+
+# Convertir nombres a formato Nombre Propio
+investigadores_por_grupos <- investigadores_por_grupos %>%
+  mutate(Nombre = str_to_title(Nombre))
+
+# Función para convertir "YYYY/MM" a "YYYY-MM-DD"
+convert_date <- function(date_str) {
+  if (str_detect(date_str, "/")) {
+    parts <- str_split(date_str, "/", simplify = TRUE)
+    paste0(parts[1], "-", str_pad(parts[2], 2, pad = "0"), "-01")
+  } else {
+    date_str
+  }
+}
+
+# Separar las fechas en dos columnas y calcular días de vinculación
+hoy <- Sys.Date()
+
+investigadores_por_grupos <- investigadores_por_grupos %>%
+  mutate(
+    `Inicio Vinculación` = str_extract(`Inicio - Fin Vinculación`, "^[^ ]+"),
+    `Fin Vinculación` = str_extract(`Inicio - Fin Vinculación`, "[^ ]+$"),
+    `Fin Vinculación` = ifelse(`Fin Vinculación` == "Actual", as.character(hoy), `Fin Vinculación`),
+    `Inicio Vinculación` = ymd(sapply(`Inicio Vinculación`, convert_date)),
+    `Fin Vinculación` = ymd(sapply(`Fin Vinculación`, convert_date))
+  ) %>%
+  mutate(
+    `Días de Vinculación` = as.integer(difftime(`Fin Vinculación`, `Inicio Vinculación`, units = "days")),
+    `Vigente` = ifelse(`Fin Vinculación` == hoy, "Sí", "No")
+  )
+
+# Agrupar por Nombre y combinar los grupos en los que participan si están vigentes
+agrupacion_investigadores_por_grupos <- investigadores_por_grupos %>%
+  group_by(Nombre) %>%
+  summarise(
+    Vinculación = first(Vinculación),
+    `Horas dedicación` = first(`Horas dedicación`),
+    `Inicio Vinculación` = first(`Inicio Vinculación`),
+    `Fin Vinculación` = first(`Fin Vinculación`),
+    `Días de Vinculación` = first(`Días de Vinculación`),
+    Tipologia = first(Tipologia),
+    Grupo_Vigente = paste(unique(Grupo[Vigente == "Sí"]), collapse = ", "),
+    Grupo_No_Vigente = paste(unique(Grupo[Vigente == "No"]), collapse = ", "),
+    Vigente = ifelse(any(Vigente == "Sí"), "Sí", "No")
+  ) %>%
+  mutate(
+    Grupo = ifelse(Grupo_Vigente != "" & Grupo_No_Vigente != "", 
+                   paste(Grupo_Vigente, Grupo_No_Vigente, sep = ", "), 
+                   ifelse(Grupo_Vigente != "", Grupo_Vigente, Grupo_No_Vigente))
+  ) %>%
+  select(-Grupo_Vigente, -Grupo_No_Vigente) %>%
+  ungroup()
+
+# 3.2 AGRUPACIÓN INTEGRANTES POR GRUPOS ----
+
+ruta_docentes <- "../RAW DATA/Docentes/profesores_TC_20241.xlsx"
+archivos <- list.files(path = ruta_docentes, pattern = "^[^~].*\\.xlsx$", full.names = TRUE)
+docentes_20241 <- read_excel(ruta_docentes)
+
+# Función para reorganizar nombres
+reorganizar_nombres <- function(nombre_completo) {
+  partes <- unlist(strsplit(nombre_completo, " "))
+  num_palabras <- length(partes)
+  
+  if (num_palabras == 2) {
+    nuevo_nombre <- paste(partes[2], partes[1])
+  } else if (num_palabras == 3) {
+    nuevo_nombre <- paste(partes[1], partes[2], partes[3])
+  } else if (num_palabras == 4) {
+    nuevo_nombre <- paste(partes[3], partes[4], partes[1], partes[2])
+  } else {
+    nuevo_nombre <- nombre_completo
+  }
+  
+  return(nuevo_nombre)
+}
+
+# Aplicar la función a la columna 'Nombres Completo'
+docentes_20241$Nombres_Reorganizados <- sapply(docentes_20241$`Nombres Completo`, reorganizar_nombres)
+
+# 3.3 MERGE BASES DE DATOS: TALENTO HUMANO con INVESTIGADORES CVLAC ----
+
+docentes_20241 <- docentes_20241 %>%
+  mutate(Nombres_Reorganizados = tolower(Nombres_Reorganizados))
+
+investigadores_por_grupos <- investigadores_por_grupos %>%
+  mutate(Nombre = tolower(Nombre))
+
+docentes_agrupados <- inner_join(docentes_20241, investigadores_por_grupos, by = c("Nombres_Reorganizados" = "Nombre"))
+
+nombres_coincidentes <- nrow(docentes_agrupados)
+
+print(paste("Se encontraron", nombres_coincidentes, "nombres coincidentes."))
+
+print(docentes_agrupados)
+
+# 3.4 MERGE BASES DE DATOS: RESULTADO ANTERIOR CON ENCUESTA_TALENTO ----
+
+# Renombrar la columna 'Identificación' en 'encuesta_talento' a 'Número de documento'
+encuesta_talento <- encuesta_talento %>%
+  rename(`Número de documento` = Identificación)
+
+# Convertir a character para asegurarse de que los tipos de datos sean consistentes
+encuesta_talento <- encuesta_talento %>%
+  mutate(`Número de documento` = as.character(`Número de documento`))
+
+docentes_agrupados <- docentes_agrupados %>%
+  mutate(`Número de documento` = as.character(`Número de documento`))
+
+# Unir las bases de datos por 'Número de documento'
+encuesta_talento_2 <- left_join(encuesta_talento, docentes_agrupados, by = "Número de documento")
+
+# Ver cuántos registros se adicionaron
+registros_adicionados <- nrow(encuesta_talento_2) - nrow(encuesta_talento)
+
+# Mostrar el resultado
+print(paste("Se adicionaron", registros_adicionados, "registros a la nueva base de datos."))
+
+# Llenar los valores de 'Grupo_Investigacion' con 'Grupo' cuando 'Grupo_Investigacion' está vacía
+encuesta_talento_2 <- encuesta_talento_2 %>%
+  mutate(Grupo_Investigacion = ifelse(is.na(Grupo_Investigacion) | Grupo_Investigacion == "", Grupo, Grupo_Investigacion))
+
+encuesta_talento_2 <- encuesta_talento_2 %>%
+  select(-`Nombres Completo`, -No., -`...1`, -Nombre, -Cédula)
+
+# Reorganizar las columnas
+encuesta_talento_2 <- encuesta_talento_2 %>%
+  select(
+    `Número de documento`,
+    Nombres_Reorganizados,
+    Grupo_Investigacion,
+    Lineas_de_Investigacion,
+    Disciplinas,
+    Enfoque_Investigativo,
+    Nucleo_Basico_Conocimiento,
+    `Inicio Vinculación`,
+    `Fin Vinculación`,
+    `Días de Vinculación`,
+    Programa,
+    DepartamentoAcademico,
+    Nivel,
+    Departamento,
+    Programa_Academico,
+    Genero,
+    Dedicación,
+    `Tipo de contratación`,
+    `Duración del contrato en meses`,
+    `Máximo nivel de formación obtenido`,
+    `Institución en la que obtuvo el grado en el máximo nivel de formación`,
+    `Modalidad del programa en el que obtuvo el máximo nivel máximo de formación (distancia o presencial)`,
+    Vinculación,
+    `Horas dedicación`,
+    `Inicio - Fin Vinculación`,
+    Tipologia,
+    Vigente,
+    Discapacidades,
+    `Numero de hijos`,
+    Estrato,
+    `Estado civil`,
+    Colegio,
+    Barrio,
+    Comuna,
+    Municipio,
+    `Puntaje Icfes`,
+    Transporte,
+    `Trabaja actualmente`,
+    `Fecha de diligenciamiento`
+  )
+
+# CARGAR .RDATA
+
+setwd("../DATA CONSOLIDADA/")
+load("proyeccion_por_snies")
+ls()
+
+# 12 DE AGOSTO DE 2023 ------------------
+
+# Priorización de tipologias por Cátegorias: Nuevo Conocimiento y Producción TyT.
+
+# Filtrar las categorías especificadas
+index_seleccion_categorias <- index_talento_produccion %>%
+  filter(Tipologia %in% c("Articulos publicados", 
+                          "Capitulos de libro publicados", 
+                          "Prototipos", 
+                          "Innovaciones generadas en la Gestión Empresarial", 
+                          "Softwares", 
+                          "Signos distintivos", 
+                          "Innovaciones en procesos y procedimientos",
+                          "Eventos Científicos",
+                          "Informes de investigacion",
+                          "Desarrollo Web",
+                          "Consultorías científico-tecnológicas",
+                          "Procesos de apropiación social del Conocimiento para el fortalecimiento o solución de asuntos de interés social",
+                          "Trabajos dirigidos/tutorias",
+                          "Curso de Corta Duración Dictados"))
+
+# Mostrar la nueva base de datos
+index_seleccion_categorias
+
+conteo_lineas_tipologia <- index_seleccion_categorias %>%
+  group_by(Lineas_de_Investigacion, Tipologia, Categoria) %>%
+  summarise(Conteo = n(),
+            Talento = n_distinct(Nombre)) %>%
+  ungroup() %>%
+  arrange(desc(Conteo))
+
+conteo_lineas_tipologia <- conteo_lineas_tipologia %>%
+  mutate(Productividad = Talento / Conteo)
+
+# Etiquetas CONSOLIDADA, POR CONSOLIDAR, NINGUNA
+
+# Calcular los promedios de Conteo y Productividad
+promedio_conteo <- mean(conteo_lineas_tipologia$Conteo)
+promedio_productividad <- mean(conteo_lineas_tipologia$Productividad)
+
+# Crear la nueva variable de etiqueta
+conteo_lineas_tipologia <- conteo_lineas_tipologia %>%
+  mutate(Etiqueta = case_when(
+    Conteo > promedio_conteo & Productividad > promedio_productividad ~ "Consolidada",
+    Conteo < promedio_conteo & Productividad > promedio_productividad ~ "Por consolidar",
+    TRUE ~ "No consolidada"
+  ))
+
+# Por percentiles
+
+# Calcular los percentiles
+percentil_conteo <- quantile(conteo_lineas_tipologia$Conteo, 0.40) # Usamos el percentil 60 para un criterio más flexible
+percentil_productividad <- quantile(conteo_lineas_tipologia$Productividad, 0.40) # Usamos el percentil 60
+
+# Crear la nueva variable de etiqueta con criterios más flexibles
+conteo_lineas_tipologia <- conteo_lineas_tipologia %>%
+  mutate(Etiqueta = case_when(
+    Conteo > percentil_conteo & Productividad > percentil_productividad ~ "Consolidada",
+    Conteo > percentil_conteo & Productividad <= percentil_productividad ~ "Potencial a consolidar",
+    TRUE ~ "No consolidada"
+  ))
+
+# POR ENFOQUE_INVESTIGATIVO
+
+# Calcular Conteo, Talento y Productividad por Lineas_de_Investigacion y Enfoque_Investigativo
+conteo_lineas_enfoque <- index_seleccion_categorias %>%
+  group_by(Lineas_de_Investigacion, Enfoque_Resumido, Categoria) %>%
+  summarise(
+    Conteo = n(),
+    Talento = n_distinct(Nombre),
+    Productividad = Talento / Conteo
+  ) %>%
+  ungroup()
+
+# Calcular Conteo, Talento y Productividad por Lineas_de_Investigacion y Enfoque_Investigativo
+conteo_enfoque_categoria <- index_seleccion_categorias %>%
+  group_by(Nombre, Categoria, Enfoque_Resumido) %>%
+  summarise(
+    Conteo = n(),
+    Talento = n_distinct(Nombre),
+    Productividad = Talento / Conteo
+  ) %>%
+  ungroup()
+
+# Calcular los percentiles para un criterio más flexible
+percentil_conteo <- quantile(conteo_enfoque_categoria$Conteo, 0.60)
+percentil_productividad <- quantile(conteo_enfoque_categoria$Productividad, 0.60)
+
+# Crear la nueva variable de etiqueta con criterios más flexibles
+conteo_enfoque_categoria <- conteo_enfoque_categoria %>%
+  mutate(Etiqueta = case_when(
+    Conteo > percentil_conteo & Productividad > percentil_productividad ~ "Consolidada",
+    Conteo > percentil_conteo & Productividad <= percentil_productividad ~ "Potencial a consolidar",
+    TRUE ~ "No consolidada"
+  ))
+
+# POR DISCIPLINAS
+
+# Calcular Conteo, Talento y Productividad por Lineas_de_Investigacion y Disciplinas
+conteo_lineas_disciplinas <- index_seleccion_categorias %>%
+  group_by(Lineas_de_Investigacion, Disciplinas, Categoria) %>%
+  summarise(
+    Conteo = n(),
+    Talento = n_distinct(Nombre),
+    Productividad = Talento / Conteo
+  ) %>%
+  ungroup()
+
+# Calcular los percentiles para un criterio más flexible
+percentil_conteo <- quantile(conteo_lineas_disciplinas$Conteo, 0.60)
+percentil_productividad <- quantile(conteo_lineas_disciplinas$Productividad, 0.60)
+
+# Crear la nueva variable de etiqueta con criterios más flexibles
+conteo_lineas_disciplinas <- conteo_lineas_disciplinas %>%
+  mutate(Etiqueta = case_when(
+    Conteo > percentil_conteo & Productividad > percentil_productividad ~ "Consolidada",
+    Conteo <= percentil_conteo & Productividad > percentil_productividad ~ "Por consolidar",
+    Conteo > percentil_conteo & Productividad <= percentil_productividad ~ "Potencial a consolidar",
+    TRUE ~ "No consolidada"
+  ))
+
+# ENFOQUES RESUMIDOS
+
+enfoque_resumido <- read_excel("/Users/cristianespinal/Downloads/enfoque_resumido.xlsx")
+str(enfoque_resumido)
+
+# Asegúrate de que los nombres de las columnas coincidan
+enfoque_resumido <- enfoque_resumido %>%
+  rename(Enfoque_Investigativo = Enfoque_Investigativo)
+
+# Unir las bases de datos
+index_seleccion_categorias <- index_seleccion_categorias %>%
+  left_join(enfoque_resumido, by = "Enfoque_Investigativo")
+
+# LISTADO DE ENFOQUES RESUMIDOS
+
+# Agrupar por Categoría y Enfoque Resumido
+listado_enfoques <- index_seleccion_categorias %>%
+  group_by(Categoria, Enfoque_Resumido) %>%
+  summarise(Conteo = n(), .groups = 'drop') %>%
+  arrange(Categoria, desc(Conteo))
+
+# PRODUCTOS POR AÑO
+
+productos_por_año <- index_seleccion_categorias %>%
+  group_by(Año) %>%
+  summarise(Conteo = n(), .groups = 'drop') %>%
+  arrange(Año, desc(Conteo))
+
+# Convertir la columna Año a character antes de sumar el total
+productos_por_año <- index_talento_produccion %>%
+  group_by(Año, Grupo_Investigacion) %>%
+  summarise(Conteo = n(), .groups = 'drop') %>%
+  arrange(Año, desc(Conteo)) %>%
+  mutate(Año = as.character(Año))
+
+# Calcular el total de la columna Conteo
+total <- productos_por_año %>%
+  summarise(Año = "TOTAL", Conteo = sum(Conteo))
+
+# Combinar el total con el dataframe original
+productos_por_año <- bind_rows(productos_por_año, total)
+
+# Convertir la columna Año a character antes de sumar el total
+productos_por_año <- index_talento_produccion %>%
+  group_by(Año, Grupo_Investigacion) %>%
+  summarise(Conteo = n(), .groups = 'drop') %>%
+  arrange(Año, desc(Conteo)) %>%
+  mutate(Año = as.character(Año))
+
+# Calcular el total de la columna Conteo
+total <- productos_por_año %>%
+  summarise(Año = "TOTAL", Conteo = sum(Conteo))
+
+# Combinar el total con el dataframe original
+productos_por_año <- bind_rows(productos_por_año, total)
+
+# Ver el resultado
+print(productos_por_año)
+
+productos_por_año <- produccion_productividad %>%
+  group_by(Año, `Nombre del grupo`) %>%
+  summarise(Conteo = n(), .groups = 'drop') %>%
+  arrange(Año, desc(Conteo)) %>%
+  mutate(Año = as.character(Año))
+
+productos_por_año <- web_scrapping_investigacion %>%
+  group_by(Año) %>%
+  summarise(Conteo = n(), .groups = 'drop') %>%
+  arrange(Año, desc(Conteo)) %>%
+  mutate(Año = as.character(Año))
+
+productos_por_grupo <- web_scrapping_investigacion %>%
+  group_by(`Nombre del grupo`) %>%
+  summarise(Conteo = n(), .groups = 'drop') %>%
+  arrange(`Nombre del grupo`, desc(Conteo)) %>%
+  mutate(`Nombre del grupo` = as.character(`Nombre del grupo`))
+
+produccion_productividad
+
+######### 27 DE AGOSTO DE 2024
+
+# Realiza la unión de las dos bases de datos
+merge_scrapping_encuesta <- web_scrapping_investigacion %>%
+  left_join(encuesta_talento, by = "Identificación")
+
+# Filtrar las categorías especificadas
+index_seleccion_categorias <- merge_scrapping_encuesta %>%
+  filter(Tipologia %in% c("Articulos publicados", 
+                          "Capitulos de libro publicados", 
+                          "Prototipos", 
+                          "Innovaciones generadas en la Gestión Empresarial", 
+                          "Softwares", 
+                          "Signos distintivos", 
+                          "Innovaciones en procesos y procedimientos",
+                          "Eventos Científicos",
+                          "Informes de investigacion",
+                          "Desarrollo Web",
+                          "Consultorías científico-tecnológicas",
+                          "Procesos de apropiación social del Conocimiento para el fortalecimiento o solución de asuntos de interés social",
+                          "Trabajos dirigidos/tutorias",
+                          "Curso de Corta Duración Dictados"))
+
+index_seleccion_categorias %>%
+  list(
+    head = head(.),
+    summary = summary(.),
+    str = str(.),
+    glimpse = glimpse(.),
+    types = sapply(., class),
+    uniques = sapply(., function(x) length(unique(x))),
+    na_count = sapply(., function(x) sum(is.na(x)))
+  )
+
+index_seleccion_categorias_sin_duplicados %>%
+  list(
+    head = head(.),
+    summary = summary(.),
+    str = str(.),
+    glimpse = glimpse(.),
+    types = sapply(., class),
+    uniques = sapply(., function(x) length(unique(x))),
+    na_count = sapply(., function(x) sum(is.na(x)))
+  )
+
+# FUNCIÓN DE CONTEO
+
+index_seleccion_categorias_sin_duplicados <- index_seleccion_categorias_sin_duplicados %>%
+  mutate(
+    `Nombre del grupo` = case_when(
+      `Nombre del grupo` == "GRUPO DE INVESTIGACION E INNOVACION EN ENERGIA - GIIEN" ~ "GIIEN",
+      `Nombre del grupo` == "GRUPO DE INVESTIGACION EN CIENCIAS ELECTRONICAS E INFORMATICAS - GICEI" ~ "GICEI",
+      `Nombre del grupo` == "INVESTIGACION E INNOVACION AMBIENTAL. GIIAM" ~ "GIIAM",
+      `Nombre del grupo` == "QUALIPRO- GRUPO DE INVESTIGACION EN CALIDAD Y PRODUCTIVIDAD" ~ "QUALIPRO",
+      TRUE ~ `Nombre del grupo`
+    )
+  )
+
+# Crear funciones para el procesamiento y normalización
+procesar_conteo <- function(data, grupo_var) {
+  # Contar por grupo_var cuántos investigadores tenemos (Talento)
+  talento_conteo <- data %>%
+    group_by({{ grupo_var }}) %>%
+    summarise(Talento = n_distinct(Identificación))
+  
+  # Contar el número de productos por grupo_var (Producción)
+  produccion_conteo <- data %>%
+    group_by({{ grupo_var }}) %>%
+    summarise(Producción = n_distinct(Titulo))
+  
+  # Unir los conteos de Talento y Producción
+  conteo <- left_join(talento_conteo, produccion_conteo, by = as_label(enquo(grupo_var)))
+  
+  # Crear una variable que sea un índice de productividad (Producción / Talento)
+  conteo <- conteo %>%
+    mutate(Indice_Productividad = Producción / Talento)
+  
+  # Asegurar que el índice de productividad esté entre 0 y 1
+  conteo <- conteo %>%
+    mutate(Indice_Productividad = (Indice_Productividad - min(Indice_Productividad, na.rm = TRUE)) / 
+             (max(Indice_Productividad, na.rm = TRUE) - min(Indice_Productividad, na.rm = TRUE)))
+  
+  # Crear variable instrumento_talento normalizando Talento de 0 a 1
+  conteo <- conteo %>%
+    mutate(instrumento_talento = (Talento - min(Talento, na.rm = TRUE)) / 
+             (max(Talento, na.rm = TRUE) - min(Talento, na.rm = TRUE)))
+  
+  # Crear variable instrumento_producción normalizando Producción de 0 a 1
+  conteo <- conteo %>%
+    mutate(instrumento_producción = (Producción - min(Producción, na.rm = TRUE)) / 
+             (max(Producción, na.rm = TRUE) - min(Producción, na.rm = TRUE)))
+  
+  return(conteo)
+}
+
+# Producción por grupo de investigación
+
+index_lineas <- procesar_conteo(index_seleccion_categorias_sin_duplicados, Lineas_de_Investigacion)
+index_enfoques <- procesar_conteo(index_seleccion_categorias_sin_duplicados, Enfoque_Investigativo)
+index_nucleos <- procesar_conteo(index_seleccion_categorias_sin_duplicados, Nucleo_Basico_Conocimiento)
+index_disciplinas <- procesar_conteo(index_seleccion_categorias_sin_duplicados, Disciplinas)
+index_categoria <- procesar_conteo(index_seleccion_categorias_sin_duplicados, Categoria)
+index_tipologia <- procesar_conteo(index_seleccion_categorias_sin_duplicados, Tipologia)
+
+index_lineas %>%
+  list(
+    head = head(.),
+    summary = summary(.),
+    str = str(.),
+    glimpse = glimpse(.),
+    types = sapply(., class),
+    uniques = sapply(., function(x) length(unique(x))),
+    na_count = sapply(., function(x) sum(is.na(x)))
+  )
+
+index_categoria %>%
+  list(
+    head = head(.),
+    summary = summary(.),
+    str = str(.),
+    glimpse = glimpse(.),
+    types = sapply(., class),
+    uniques = sapply(., function(x) length(unique(x))),
+    na_count = sapply(., function(x) sum(is.na(x)))
+  )
+
+resultados_por_categoria %>%
+  list(
+    head = head(.),
+    summary = summary(.),
+    str = str(.),
+    glimpse = glimpse(.),
+    types = sapply(., class),
+    uniques = sapply(., function(x) length(unique(x))),
+    na_count = sapply(., function(x) sum(is.na(x)))
+  )
+
+# Estados de consolidación
+
+# Calcular Conteo, Talento y Productividad por Lineas_de_Investigacion y Enfoque_Investigativo
+
+# 1. Categoría y tipología
+
+estado_categoria_tipologia <- index_seleccion_categorias_sin_duplicados %>%
+  group_by(Nombre, Categoria, Tipologia) %>%
+  summarise(
+    Conteo = n(),
+    Talento = n_distinct(Nombre),
+    Productividad = Talento / Conteo
+  ) %>%
+  ungroup()
+
+# Calcular los percentiles para un criterio más flexible
+percentil_conteo <- quantile(conteo_enfoque_categoria$Conteo, 0.40)
+percentil_productividad <- quantile(conteo_enfoque_categoria$Productividad, 0.40)
+
+# Crear la nueva variable de etiqueta con criterios más flexibles
+estado_categoria_tipologia <- estado_categoria_tipologia %>%
+  mutate(Etiqueta = case_when(
+    Conteo > percentil_conteo & Productividad > percentil_productividad ~ "Consolidada",
+    Conteo > percentil_conteo & Productividad <= percentil_productividad ~ "Potencial a consolidar",
+    TRUE ~ "No consolidada"
+  ))
+
+# 2. Línea y categoría
+
+estado_linea_categoria <- index_seleccion_categorias_sin_duplicados %>%
+  group_by(Nombre, Categoria, Lineas_de_Investigacion) %>%
+  summarise(
+    Conteo = n(),
+    Talento = n_distinct(Nombre),
+    Productividad = Talento / Conteo
+  ) %>%
+  ungroup()
+
+# Calcular los percentiles para un criterio más flexible
+percentil_conteo <- quantile(conteo_enfoque_categoria$Conteo, 0.40)
+percentil_productividad <- quantile(conteo_enfoque_categoria$Productividad, 0.40)
+
+# Crear la nueva variable de etiqueta con criterios más flexibles
+estado_linea_categoria <- estado_linea_categoria %>%
+  mutate(Etiqueta = case_when(
+    Conteo > percentil_conteo & Productividad > percentil_productividad ~ "Consolidada",
+    Conteo > percentil_conteo & Productividad <= percentil_productividad ~ "Potencial a consolidar",
+    TRUE ~ "No consolidada"
+  ))
+
+# Función
+
+library(dplyr)
+library(purrr)
+
+# Definir las categorías de interés
+categorias_interes <- c("ACTIVIDADES DE FORMACIÓN", "NUEVO CONOCIMIENTO", 
+                        "APROPIACIÓN SOCIAL Y DIVULGACIÓN PÚBLICA DE LA CIENCIA", 
+                        "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA")
+
+# Crear una lista para almacenar los resultados
+resultados_por_categoria <- list()
+
+# Bucle para iterar sobre cada categoría
+for (categoria in categorias_interes) {
+  
+  # Filtrar la base de datos para la categoría actual
+  datos_categoria <- index_seleccion_categorias_sin_duplicados %>%
+    filter(Categoria == categoria)
+  
+  # Calcular los percentiles para la categoría actual
+  percentil_conteo <- quantile(datos_categoria$Conteo, 0.40, na.rm = TRUE)
+  percentil_productividad <- quantile(datos_categoria$Productividad, 0.40, na.rm = TRUE)
+  
+  # Aplicar las operaciones de grupo y resumen
+  estado_linea_categoria <- datos_categoria %>%
+    group_by(Nombre, Lineas_de_Investigacion) %>%
+    summarise(
+      Conteo = n(),
+      Talento = n_distinct(Nombre),
+      Productividad = Talento / Conteo
+    ) %>%
+    ungroup() %>%
+    mutate(Etiqueta = case_when(
+      Conteo > percentil_conteo & Productividad > percentil_productividad ~ "Consolidada",
+      Conteo > percentil_conteo & Productividad <= percentil_productividad ~ "Potencial a consolidar",
+      TRUE ~ "No consolidada"
+    ))
+  
+  # Almacenar el resultado en la lista
+  resultados_por_categoria[[categoria]] <- estado_linea_categoria
+}
+
+# Ver los resultados por categoría
+resultados_por_categoria
+
+# Iterar sobre los resultados para guardar cada uno por separado
+for (categoria in names(resultados_por_categoria)) {
+  
+  # Obtener el data.frame correspondiente a la categoría
+  estado_categoria_tipologia <- resultados_por_categoria[[categoria]]
+  
+  # Crear un nombre de archivo adecuado
+  file_name <- paste0("estado_", gsub(" ", "_", tolower(categoria)), "_linea")
+  
+  # Guardar el archivo utilizando la función guardar_datos
+  guardar_datos(estado_categoria_tipologia, path_base, file_name)
+}
+
+# Índice Líneas de Investigación
+
+# Calcular subíndices para cada categoría
+subindices <- resultados_por_categoria %>%
+  map(~ .x %>%
+        mutate(
+          Subindice = (Conteo * 0.4) + (Talento * 0.3) + (Productividad * 0.3)
+        ))
+
+# Asignar los pesos a las categorías
+pesos <- c(
+  "ACTIVIDADES DE FORMACIÓN" = 0.25,
+  "NUEVO CONOCIMIENTO" = 0.25,
+  "APROPIACIÓN SOCIAL Y DIVULGACIÓN PÚBLICA DE LA CIENCIA" = 0.25,
+  "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA" = 0.25
+)
+
+# Aplicar los pesos y calcular el índice final
+indice_final <- map2(subindices, names(subindices), ~ .x %>%
+                       mutate(Indice_ponderado = Subindice * pesos[.y])) %>%
+  bind_rows() %>%
+  group_by(Nombre, Lineas_de_Investigacion) %>%
+  summarise(Indice_Final = sum(Indice_ponderado, na.rm = TRUE)) %>%
+  arrange(desc(Indice_Final))
+
+# Ranking de las mejores líneas de investigación
+ranking_lineas <- indice_final %>%
+  arrange(desc(Indice_Final))
+
+# Ver las top 10 líneas de investigación
+print(ranking_lineas, n = 10)
+
+
 
 # GUARDAR -----------
 
+guardar_datos(ranking_lineas, path_base, "ranking_lineas_0.4")
+guardar_datos(ranking_lineas, path_base, "ranking_lineas_0.25")
+
+guardar_datos(estado_categoria_tipologia, path_base, "estado_categoria_tipologia")
+guardar_datos(conteo_enfoque_categoria, path_base, "conteo_enfoque_categoria")
+guardar_datos(index_grupo, path_base, "index_grupo")
+guardar_datos(index_seleccion_categorias, path_base, "index_seleccion_categorias")
+guardar_datos(web_scrapping_investigacion, path_base, "web_scrapping_investigacion")
+guardar_datos(productos_por_año, path_base, "productos_por_año")
+guardar_datos(listado_enfoques, path_base, "listado_enfoques")
+guardar_datos(conteo_lineas_disciplinas, path_base, "conteo_lineas_disciplinas")
+guardar_datos(conteo_lineas_enfoque, path_base, "conteo_lineas_enfoque")
+guardar_datos(conteo_lineas_tipologia, path_base, "conteo_lineas_tipologia")
 guardar_datos(index_lineas, path_base, "index_lineas")
+guardar_datos(index_seleccion_categorias, path_base, "index_seleccion_categorias")
 guardar_datos(index_nucleos, path_base, "index_nucleos")
 guardar_datos(index_disciplinas, path_base, "index_disciplinas")
 guardar_datos(index_enfoques, path_base, "index_enfoques")
 guardar_datos(index_grupo, path_base, "index_grupo")
 guardar_datos(index_categoria, path_base, "index_categoria")
 guardar_datos(index_tipologia, path_base, "index_tipologia")
+guardar_datos(investigadores_por_grupos, path_base, "investigadores_por_grupos")
+guardar_datos(agrupacion_investigadores_por_grupos, path_base, "agrupacion_investigadores_por_grupos")
