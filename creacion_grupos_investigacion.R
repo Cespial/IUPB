@@ -863,9 +863,20 @@ resultados_por_categoria %>%
     na_count = sapply(., function(x) sum(is.na(x)))
   )
 
-# Estados de consolidación
+tabla_por_categoria %>%
+  list(
+    head = head(.),
+    summary = summary(.),
+    str = str(.),
+    glimpse = glimpse(.),
+    types = sapply(., class),
+    uniques = sapply(., function(x) length(unique(x))),
+    na_count = sapply(., function(x) sum(is.na(x)))
+  )
 
-# Calcular Conteo, Talento y Productividad por Lineas_de_Investigacion y Enfoque_Investigativo
+# ESTADOS DE CONSOLIDACION ----------
+
+# Calcular Conteo, Talento y Productividad por Lineas_de_Investigacion y Enfoque_Investigativo 
 
 # 1. Categoría y tipología
 
@@ -913,7 +924,7 @@ estado_linea_categoria <- estado_linea_categoria %>%
     TRUE ~ "No consolidada"
   ))
 
-# Función
+# RESULTADOS POR CATEGORIA ----------
 
 library(dplyr)
 library(purrr)
@@ -972,13 +983,16 @@ for (categoria in names(resultados_por_categoria)) {
   guardar_datos(estado_categoria_tipologia, path_base, file_name)
 }
 
+
+# ÍNDICE DE PRODUCCIÓN CIENTIFICA ---------------
+
 # Índice Líneas de Investigación
 
 # Calcular subíndices para cada categoría
 subindices <- resultados_por_categoria %>%
   map(~ .x %>%
         mutate(
-          Subindice = (Conteo * 0.4) + (Talento * 0.3) + (Productividad * 0.3)
+          Subindice = (Conteo * 0.3) + (Talento * 0.4) + (Productividad * 0.3)
         ))
 
 # Asignar los pesos a las categorías
@@ -1004,13 +1018,416 @@ ranking_lineas <- indice_final %>%
 # Ver las top 10 líneas de investigación
 print(ranking_lineas, n = 10)
 
+# TIPOS A Y B POR CATEGORÍA -----------
 
+index_seleccion_categorias_sin_duplicados <- index_seleccion_categorias_sin_duplicados %>%
+  mutate(
+    Tipo = case_when(
+      # Condiciones para la categoría PRODUCCIÓN TÉCNICA Y TECNOLÓGICA
+      Categoria == "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA" & Tipologia %in% c(
+        "Innovaciones generadas en la Gestión Empresarial", 
+        "Prototipos", 
+        "Signos distintivos", 
+        "Innovaciones en procesos y procedimientos"
+      ) ~ "Tipo A",
+      Categoria == "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA" & Tipologia == "Softwares" ~ "Tipo B",
+      
+      # Condiciones para la categoría ACTIVIDADES DE FORMACIÓN
+      Categoria == "ACTIVIDADES DE FORMACIÓN" & `Tipologia 2` %in% c(
+        "Trabajo de grado de maestría o especialidad clínica", 
+        "Extensión extracurricular", 
+        "Trabajos dirigidos/Tutorías de otro tipo", 
+        "Iniciación Científica", 
+        "Perfeccionamiento", 
+        "Monografía de conclusión de curso de perfeccionamiento/especialización", 
+        "Tesis de doctorado"
+      ) ~ "Tipo A",
+      Categoria == "ACTIVIDADES DE FORMACIÓN" & `Tipologia 2` %in% c(
+        "Trabajos de grado de pregrado",
+        "Trabajo de grado de maestría o especialidad clínica", 
+        "Extensión extracurricular", 
+        "Trabajos dirigidos/Tutorías de otro tipo", 
+        "Iniciación Científica", 
+        "Perfeccionamiento", 
+        "Monografía de conclusión de curso de perfeccionamiento/especialización", 
+        "Tesis de doctorado", 
+        "Otro", 
+        "Especialización"
+      ) ~ "Tipo B",
+      
+      # Para todas las demás combinaciones
+      TRUE ~ "Tipo A"
+    )
+  )
+
+# RESULTADOS POR CATEGORIA - RECALCULADO CON CATEGORIA Y TIPO
+
+library(dplyr)
+library(purrr)
+
+# Definir las categorías de interés
+categorias_interes <- c("ACTIVIDADES DE FORMACIÓN", "NUEVO CONOCIMIENTO", 
+                        "APROPIACIÓN SOCIAL Y DIVULGACIÓN PÚBLICA DE LA CIENCIA", 
+                        "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA")
+
+# Crear una lista para almacenar los resultados
+resultados_por_categoria <- list()
+
+# Bucle para iterar sobre cada categoría
+for (categoria in categorias_interes) {
+  
+  # Filtrar la base de datos para la categoría actual
+  datos_categoria <- index_seleccion_categorias_sin_duplicados %>%
+    filter(Categoria == categoria)
+  
+  # Calcular los percentiles para la categoría actual
+  percentil_conteo <- quantile(datos_categoria$Conteo, 0.40, na.rm = TRUE)
+  percentil_productividad <- quantile(datos_categoria$Productividad, 0.40, na.rm = TRUE)
+  
+  # Aplicar las operaciones de grupo y resumen
+  estado_linea_categoria <- datos_categoria %>%
+    group_by(Nombre, Lineas_de_Investigacion, Categoria, Tipo) %>%  # Incluir Categoria y Tipo en el agrupamiento
+    summarise(
+      Conteo = n(),
+      Talento = n_distinct(Nombre),
+      Productividad = Talento / Conteo,
+      .groups = 'drop'
+    ) %>%
+    mutate(Etiqueta = case_when(
+      Conteo > percentil_conteo & Productividad > percentil_productividad ~ "Consolidada",
+      Conteo > percentil_conteo & Productividad <= percentil_productividad ~ "Potencial a consolidar",
+      TRUE ~ "No consolidada"
+    ))
+  
+  # Almacenar el resultado en la lista
+  resultados_por_categoria[[categoria]] <- estado_linea_categoria
+}
+
+# Ver los resultados por categoría
+print(resultados_por_categoria)
+
+# Iterar sobre los resultados para guardar cada uno por separado
+for (categoria in names(resultados_por_categoria)) {
+  
+  # Obtener el data.frame correspondiente a la categoría
+  estado_categoria_tipologia <- resultados_por_categoria[[categoria]]
+  
+  # Crear un nombre de archivo adecuado
+  file_name <- paste0("estado_", gsub(" ", "_", tolower(categoria)), "_linea")
+  
+  # Guardar el archivo utilizando la función guardar_datos
+  guardar_datos(estado_categoria_tipologia, path_base, file_name)
+}
+
+
+# INDICE ACTUALIZADO ------------
+
+# Calcular subíndices para cada categoría, considerando el tipo
+subindices <- resultados_por_categoria %>%
+  map(~ .x %>%
+        mutate(
+          Subindice = case_when(
+            Categoria == "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA" & Tipo == "Tipo A" ~ (Conteo * 0.4) + (Talento * 0.3) + (Productividad * 0.3),
+            Categoria == "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA" & Tipo == "Tipo B" ~ (Conteo * 0.3) + (Talento * 0.4) + (Productividad * 0.3),
+            Categoria == "ACTIVIDADES DE FORMACIÓN" & Tipo == "Tipo A" ~ (Conteo * 0.4) + (Talento * 0.3) + (Productividad * 0.3),
+            Categoria == "ACTIVIDADES DE FORMACIÓN" & Tipo == "Tipo B" ~ (Conteo * 0.3) + (Talento * 0.4) + (Productividad * 0.3),
+            TRUE ~ (Conteo * 0.4) + (Talento * 0.3) + (Productividad * 0.3)  # Para NUEVO CONOCIMIENTO y otras categorías
+          )
+        ))
+
+# Asignar los pesos a las categorías con discriminación por Tipo
+pesos <- c(
+  "NUEVO CONOCIMIENTO" = 0.3,
+  "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA_Tipo A" = 0.375,
+  "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA_Tipo B" = 0.1,
+  "ACTIVIDADES DE FORMACIÓN_Tipo A" = 0.125,
+  "ACTIVIDADES DE FORMACIÓN_Tipo B" = 0.05
+)
+
+# Aplicar los pesos y calcular el índice final
+indice_final <- subindices %>%
+  map2(names(subindices), ~ .x %>%
+         mutate(Indice_ponderado = case_when(
+           Categoria == "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA" & Tipo == "Tipo A" ~ Subindice * pesos["PRODUCCIÓN TÉCNICA Y TECNOLÓGICA_Tipo A"],
+           Categoria == "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA" & Tipo == "Tipo B" ~ Subindice * pesos["PRODUCCIÓN TÉCNICA Y TECNOLÓGICA_Tipo B"],
+           Categoria == "ACTIVIDADES DE FORMACIÓN" & Tipo == "Tipo A" ~ Subindice * pesos["ACTIVIDADES DE FORMACIÓN_Tipo A"],
+           Categoria == "ACTIVIDADES DE FORMACIÓN" & Tipo == "Tipo B" ~ Subindice * pesos["ACTIVIDADES DE FORMACIÓN_Tipo B"],
+           TRUE ~ Subindice * pesos[.y]
+         ))) %>%
+  bind_rows() %>%
+  group_by(Nombre, Lineas_de_Investigacion) %>%
+  summarise(Indice_Final = sum(Indice_ponderado, na.rm = TRUE)) %>%
+  arrange(desc(Indice_Final))
+
+# Ranking de las mejores líneas de investigación
+ranking_lineas <- indice_final %>%
+  arrange(desc(Indice_Final))
+
+# Ver las top 10 líneas de investigación
+print(ranking_lineas, n = 10)
+
+# MAPA DE CALOR ---------------
+
+# Filtrar la base de datos original y agrupar por categoría, Lineas_de_Investigacion y Tipologia
+tabla_por_categoria <- index_seleccion_categorias_sin_duplicados %>%
+  filter(Categoria %in% categorias_interes) %>%  # Filtrar las categorías de interés
+  group_by(Categoria, Lineas_de_Investigacion, Tipologia) %>%  # Agrupar por Categoría, Lineas_de_Investigacion y Tipologia
+  summarise(
+    Conteo = n(),  # Calcular el número de ocurrencias (conteo)
+    Talento = n_distinct(Nombre)  # Calcular el número de talentos únicos
+  ) %>%
+  arrange(Categoria, Lineas_de_Investigacion, Tipologia)  # Ordenar los resultados
+
+# Filtrar y agrupar como en tu código original
+tabla_por_categoria <- index_seleccion_categorias_sin_duplicados %>%
+  filter(Categoria %in% categorias_interes) %>%  # Filtrar las categorías de interés
+  group_by(Categoria, Lineas_de_Investigacion, Tipologia) %>%  # Agrupar por Categoría, Lineas_de_Investigacion y Tipologia
+  summarise(
+    Conteo = n(),  # Calcular el número de ocurrencias (conteo)
+    Talento = n_distinct(Nombre)  # Calcular el número de talentos únicos
+  ) %>%
+  ungroup() %>%  # Desagrupar antes de completar combinaciones
+  complete(Categoria, Lineas_de_Investigacion, Tipologia, fill = list(Conteo = 0, Talento = 0)) %>%  # Completar todas las combinaciones posibles
+  arrange(Categoria, Lineas_de_Investigacion, Tipologia)  # Ordenar los resultados
+
+# Mostrar la tabla resultante
+print(tabla_por_categoria)
+
+# Mostrar la tabla resultante
+print(tabla_por_categoria)
+
+--------
+library(tidyr)
+library(dplyr)
+
+# Reorganizar la tabla para que las Tipologias sean columnas
+tabla_por_categoria_wide <- tabla_por_categoria %>%
+  pivot_wider(
+    names_from = Tipologia, 
+    values_from = c(Conteo, Talento),
+    names_glue = "{Tipologia}_{.value}", # Concatenar tipología con nombre de variable
+    values_fill = list(Conteo = 0, Talento = 0)  # Rellenar con 0 en caso de valores faltantes
+  )
+
+# Ver la tabla amplia
+print(tabla_por_categoria_wide)
+
+library(janitor)
+
+# Añadir títulos multinivel
+tabla_final <- tabla_por_categoria_wide %>%
+  adorn_title(where = "col", level_name = "Tipologia") %>%
+  adorn_title(where = "col", level_name = "Categoria", fun = function(x) substr(x, 1, 2))
+
+# Visualizar la tabla con los títulos multinivel
+print(tabla_final)
+
+
+----
+library(tidyr)
+library(dplyr)
+
+# Crear una nueva columna combinando la Categoria y Tipologia para los encabezados
+tabla_por_categoria_formato <- tabla_por_categoria %>%
+  mutate(Encabezado = paste(Categoria, Tipologia, sep = "_")) %>%
+  select(-Categoria, -Tipologia)  # Remover las columnas originales
+
+# Usar pivot_wider para reorganizar la tabla
+tabla_final <- tabla_por_categoria_formato %>%
+  pivot_wider(
+    names_from = Encabezado,
+    values_from = c(Conteo, Talento),
+    names_glue = "{Encabezado}_{.value}",
+    values_fill = list(Conteo = 0, Talento = 0)  # Rellenar con 0 los valores faltantes
+  )
+
+# Separar los nombres de columnas en niveles de encabezado
+colnames(tabla_final) <- gsub("_(Conteo|Talento)", "", colnames(tabla_final))  # Eliminar etiquetas duplicadas
+
+mapa_de_calor_borrador <- tabla_final
+
+# Ver la tabla resultante
+print(tabla_final)
+
+# Mostrar la tabla
+tabla_ft
+
+tabla_por_categoria_wide %>%
+  list(
+    head = head(.),
+    summary = summary(.),
+    str = str(.),
+    glimpse = glimpse(.),
+    types = sapply(., class),
+    uniques = sapply(., function(x) length(unique(x))),
+    na_count = sapply(., function(x) sum(is.na(x)))
+  )
+
+# MAPA DE CALOR ACTUALIZADO ---------
+
+library(dplyr)
+library(tidyr)
+
+# Completar todas las combinaciones de Categoria, Lineas_de_Investigacion y Tipologia
+tabla_completa <- tabla_por_categoria %>%
+  complete(Categoria, Lineas_de_Investigacion, Tipologia, fill = list(Conteo = 0, Talento = 0))
+
+# INDICE EN MAPA DE CALOR
+
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+# Paso 1: Calcular subíndices para cada categoría, considerando el tipo
+subindices <- tabla_por_categoria_wide %>%
+  mutate(
+    Subindice = case_when(
+      Categoria == "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA" & str_detect(Lineas_de_Investigacion, "Tipo A") ~ (Conteo * 0.4) + (Talento * 0.3) + (Productividad * 0.3),
+      Categoria == "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA" & str_detect(Lineas_de_Investigacion, "Tipo B") ~ (Conteo * 0.3) + (Talento * 0.4) + (Productividad * 0.3),
+      Categoria == "ACTIVIDADES DE FORMACIÓN" & str_detect(Lineas_de_Investigacion, "Tipo A") ~ (Conteo * 0.4) + (Talento * 0.3) + (Productividad * 0.3),
+      Categoria == "ACTIVIDADES DE FORMACIÓN" & str_detect(Lineas_de_Investigacion, "Tipo B") ~ (Conteo * 0.3) + (Talento * 0.4) + (Productividad * 0.3),
+      TRUE ~ (Conteo * 0.4) + (Talento * 0.3) + (Productividad * 0.3)  # Para NUEVO CONOCIMIENTO y otras categorías
+    )
+  )
+
+# Paso 2: Asignar los pesos a las categorías con discriminación por Tipo
+pesos <- c(
+  "NUEVO CONOCIMIENTO" = 0.3,
+  "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA_Tipo A" = 0.375,
+  "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA_Tipo B" = 0.1,
+  "ACTIVIDADES DE FORMACIÓN_Tipo A" = 0.125,
+  "ACTIVIDADES DE FORMACIÓN_Tipo B" = 0.05
+)
+
+# Aplicar los pesos y calcular el índice final
+indice_final <- subindices %>%
+  mutate(Indice_ponderado = case_when(
+    Categoria == "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA" & str_detect(Lineas_de_Investigacion, "Tipo A") ~ Subindice * pesos["PRODUCCIÓN TÉCNICA Y TECNOLÓGICA_Tipo A"],
+    Categoria == "PRODUCCIÓN TÉCNICA Y TECNOLÓGICA" & str_detect(Lineas_de_Investigacion, "Tipo B") ~ Subindice * pesos["PRODUCCIÓN TÉCNICA Y TECNOLÓGICA_Tipo B"],
+    Categoria == "ACTIVIDADES DE FORMACIÓN" & str_detect(Lineas_de_Investigacion, "Tipo A") ~ Subindice * pesos["ACTIVIDADES DE FORMACIÓN_Tipo A"],
+    Categoria == "ACTIVIDADES DE FORMACIÓN" & str_detect(Lineas_de_Investigacion, "Tipo B") ~ Subindice * pesos["ACTIVIDADES DE FORMACIÓN_Tipo B"],
+    TRUE ~ Subindice * pesos[Categoria]
+  )) %>%
+  group_by(Categoria, Lineas_de_Investigacion) %>%
+  summarise(Indice_Final = sum(Indice_ponderado, na.rm = TRUE), .groups = 'drop') %>%
+  arrange(desc(Indice_Final))
+
+# Paso 3: Combinar el índice final con la tabla original
+tabla_actualizada <- tabla_por_categoria_wide %>%
+  left_join(indice_final, by = c("Categoria", "Lineas_de_Investigacion"))
+
+# Mostrar la tabla actualizada
+print(tabla_actualizada)
+
+tabla_por_categoria_wide %>%
+  list(
+    head = head(.),
+    summary = summary(.),
+    str = str(.),
+    glimpse = glimpse(.),
+    types = sapply(., class),
+    uniques = sapply(., function(x) length(unique(x))),
+    na_count = sapply(., function(x) sum(is.na(x)))
+  )
+
+tabla_por_categoria_wide_reorganizada %>%
+  list(
+    head = head(.),
+    summary = summary(.),
+    str = str(.),
+    glimpse = glimpse(.),
+    types = sapply(., class),
+    uniques = sapply(., function(x) length(unique(x))),
+    na_count = sapply(., function(x) sum(is.na(x)))
+  )
+
+library(dplyr)
+
+# Unir las dos bases de datos sin traer la columna 'Nombre'
+tabla_por_categoria_wide_actualizada <- tabla_por_categoria_wide %>%
+  left_join(ranking_lineas %>%
+              select(Lineas_de_Investigacion, Indice_Final), 
+            by = "Lineas_de_Investigacion") %>%
+  select(-Nombre)  # Eliminar la columna 'Nombre'
+
+# Reorganizar las columnas: primero el índice y luego las demás
+tabla_por_categoria_wide_reorganizada <- tabla_por_categoria_wide_actualizada %>%
+  select(Indice_Final, Lineas_de_Investigacion, everything())
+
+# Mostrar la tabla reorganizada para verificar
+print(tabla_por_categoria_wide_reorganizada)
+
+# Agrupar por Categoria y Lineas_de_Investigacion, y luego sumar todas las demás columnas
+tabla_por_categoria_wide_agrupada <- tabla_por_categoria_wide_reorganizada %>%
+  group_by(Lineas_de_Investigacion) %>%
+  summarise(across(where(is.numeric), sum, na.rm = TRUE), .groups = 'drop')
+
+# Mostrar la tabla agrupada para verificar
+print(tabla_por_categoria_wide_agrupada)
+
+# Agrupar por Categoria y Lineas_de_Investigacion, y luego sumar todas las demás columnas
+  tabla_por_categoria_wide_agrupada <- tabla_por_categoria_wide_reorganizada %>%
+  group_by(Categoria, Lineas_de_Investigacion) %>%
+  summarise(across(where(is.numeric), sum, na.rm = TRUE), .groups = 'drop')
+
+# Reorganizar las columnas según las categorías
+tabla_por_categoria_wide_ordenada <- tabla_por_categoria_wide_agrupada %>%
+  select(
+    Indice_Final, 
+    Lineas_de_Investigacion, 
+    contains("Conteo")
+  )
+
+# Mostrar la tabla reorganizada para verificar
+print(tabla_por_categoria_wide_ordenada)
+
+# Calcular percentiles
+percentiles <- quantile(tabla_por_categoria_wide_ordenada$Indice_Final, probs = c(0.33, 0.66))
+
+# Añadir columna de estado de consolidación
+tabla_por_categoria_wide_ordenada <- tabla_por_categoria_wide_ordenada %>%
+  mutate(Estado_Consolidacion = case_when(
+    Indice_Final <= percentiles[1] ~ "No consolidada",
+    Indice_Final > percentiles[1] & Indice_Final <= percentiles[2] ~ "Potencial a consolidar",
+    Indice_Final > percentiles[2] ~ "Consolidada"
+  ))
+
+# Mostrar la tabla con la nueva columna
+print(tabla_por_categoria_wide_ordenada)
+
+####
+
+# Filtrar filas donde Lineas_de_Investigacion no es NA
+tabla_filtrada <- tabla_por_categoria_wide_ordenada %>%
+  filter(!is.na(Lineas_de_Investigacion))
+
+# Calcular percentiles
+percentiles <- quantile(tabla_filtrada$Indice_Final, probs = c(0.33, 0.66))
+
+# Añadir columna de estado de consolidación
+tabla_filtrada <- tabla_filtrada %>%
+  mutate(Estado_Consolidacion = case_when(
+    Indice_Final <= percentiles[1] ~ "No consolidada",
+    Indice_Final > percentiles[1] & Indice_Final <= percentiles[2] ~ "Potencial a consolidar",
+    Indice_Final > percentiles[2] ~ "Consolidada"
+  ))
+
+# Mostrar la tabla con la nueva columna
+print(tabla_filtrada)
 
 # GUARDAR -----------
 
+guardar_datos(encuesta_talento, path_base, "encuesta_investigacion")
+guardar_datos(tabla_por_categoria_wide_reorganizada, path_base, "tabla_por_categoria_wide_reorganizada")
+guardar_datos(tabla_filtrada, path_base, "tabla_filtrada")
+guardar_datos(tabla_por_categoria_wide_ordenada, path_base, "tabla_por_categoria_wide_ordenada")
+guardar_datos(tabla_por_categoria_wide_agrupada, path_base, "tabla_por_categoria_wide_agrupada")
+guardar_datos(mapa_de_calor_borrador, path_base, "mapa_de_calor_borrador")
+guardar_datos(tabla_por_categoria_wide, path_base, "tabla_por_categoria_wide")
+guardar_datos(ranking_lineas, path_base, "ranking_lineas_propio")
 guardar_datos(ranking_lineas, path_base, "ranking_lineas_0.4")
 guardar_datos(ranking_lineas, path_base, "ranking_lineas_0.25")
-
+guardar_datos(index_seleccion_categorias_sin_duplicados, path_base, "index_seleccion_categorias_sin_duplicados")
 guardar_datos(estado_categoria_tipologia, path_base, "estado_categoria_tipologia")
 guardar_datos(conteo_enfoque_categoria, path_base, "conteo_enfoque_categoria")
 guardar_datos(index_grupo, path_base, "index_grupo")

@@ -7,7 +7,7 @@ library(tidyr)
 library(openxlsx)
 library(stringi)
 
-## 3. FUNCIÓN PARA AGRUPAR BASES DE DATOS  --------------------------------------------------------------------------------
+## 1. FUNCIÓN PARA AGRUPAR BASES DE DATOS  --------------------------------------------------------------------------------
 
 lectura_base <- function(path_a) { 
   print(path_a)
@@ -21,7 +21,7 @@ lectura_base <- function(path_a) {
   })
 }
 
-## 4. FUNCIÓN PARA GUARDAR BASES DE DATOS  --------------------------------------------------------------------------------
+## 2. FUNCIÓN PARA GUARDAR BASES DE DATOS  --------------------------------------------------------------------------------
 
 # Función para guardar datos en varios formatos
 guardar_datos <- function(data, path_base, nombre_base) {
@@ -40,7 +40,7 @@ guardar_datos <- function(data, path_base, nombre_base) {
 # Ruta base donde se guardarán los archivos
 path_base <- "../DATA CONSOLIDADA/" 
 
-## 5. FUNCIÓN PARA CORREGIR LAS FECHAS  --------------------------------------------------------------------------------
+## 3. FUNCIÓN PARA CORREGIR LAS FECHAS  --------------------------------------------------------------------------------
 
 calcular_fecha <- function(periodo) {
   year <- as.numeric(substr(periodo, 1, 4))
@@ -54,9 +54,9 @@ calcular_fecha <- function(periodo) {
   )
 }
 
-## 5. AGRUPACIONES DE LAS BD  --------------------------------------------------------------------------------
+## 4. AGRUPACIONES DE LAS BD  --------------------------------------------------------------------------------
 
-### 5.1. ASPIRANTES --------------------------------------------------------------------------------
+### 4.1. ASPIRANTES --------------------------------------------------------------------------------
 
 # Cargar y procesar los datos
 aspirantes <- data.frame(
@@ -84,7 +84,7 @@ aspirantes[] <- lapply(aspirantes, function(x) {
 # Ejecución de la función de guardado para Aspirantes
 guardar_datos(aspirantes, path_base, "Aspirantes")
 
-### 5.2. ADMITIDOS --------------------------------------------------------------------------------
+### 4.2. ADMITIDOS --------------------------------------------------------------------------------
 
 admitidos <- data.frame(
   file = list.files(path = "../RAW DATA/Admitidos", recursive = TRUE), 
@@ -111,7 +111,7 @@ admitidos[] <- lapply(admitidos, function(x) {
 
 guardar_datos(admitidos, path_base, "admitidos")
 
-### 5.3. MATRICULADOS NUEVOS --------------------------------------------------------------------------------
+### 4.3. MATRICULADOS NUEVOS --------------------------------------------------------------------------------
 
 matricula_nuevos <- data.frame(
   file = list.files(path = "../RAW DATA/Matriculados_nuevos", recursive = TRUE), 
@@ -137,7 +137,7 @@ matricula_nuevos[] <- lapply(matricula_nuevos, function(x) {
 
 guardar_datos(matricula_nuevos, path_base, "matricula_nuevos")
 
-### 5.4. MATRICULADOS TOTALES --------------------------------------------------------------------------------
+### 4.4. MATRICULADOS TOTALES --------------------------------------------------------------------------------
 
 matricula_totales <- data.frame(
   file = list.files(path = "../RAW DATA/Matriculados_totales", recursive = TRUE), 
@@ -163,7 +163,7 @@ matricula_totales[] <- lapply(matricula_totales, function(x) {
 
 guardar_datos(matricula_totales, path_base, "matricula_totales")
 
-### 5.5. IAM - AAM --------------------------------------------------------------------------------
+### 4.5. IAM - AAM --------------------------------------------------------------------------------
 
 lectura_base <- function(path_a) { 
   temp <- read_excel(path = path_a, col_types = "text") %>%  # Leer todas las columnas como texto
